@@ -21,6 +21,23 @@ def run_inspector(path: Path):
     return json.loads(result.stdout)
 
 
+def test_missing_document_returns_clean_error(tmp_path):
+    missing = tmp_path / "missing.pdf"
+
+    result = subprocess.run(
+        [sys.executable, str(INSPECTOR), "--json", str(missing)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Document not found" in result.stderr
+    assert str(missing) in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_reports_pdf_metadata(tmp_path):
     sample = tmp_path / "sample.pdf"
     doc = fitz.open()

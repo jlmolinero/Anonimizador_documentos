@@ -1180,13 +1180,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    terms = load_terms(args.terms)
-    masks = load_masks(args.masks)
+    if not args.input.exists():
+        print(f"Error: Input path not found: {args.input}", file=sys.stderr)
+        return 2
+    if not (args.input.is_file() or args.input.is_dir()):
+        print(f"Error: Input path is not a file or directory: {args.input}", file=sys.stderr)
+        return 2
+    if args.terms and not args.terms.is_file():
+        print(f"Error: Terms file not found: {args.terms}", file=sys.stderr)
+        return 2
+    if args.masks and not args.masks.is_file():
+        print(f"Error: Masks file not found: {args.masks}", file=sys.stderr)
+        return 2
+
+    try:
+        terms = load_terms(args.terms)
+        masks = load_masks(args.masks)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid masks JSON: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"Error: Could not create output directory {args.output_dir}: {exc}", file=sys.stderr)
+        return 2
     redactor = Redactor(terms, args.auto_pii)
 
-    files = iter_inputs(args.input, args.recursive)
+    try:
+        files = iter_inputs(args.input, args.recursive)
+    except (FileNotFoundError, PermissionError, OSError) as exc:
+        print(f"Error: Could not read input path {args.input}: {exc}", file=sys.stderr)
+        return 2
     out_resolved = args.output_dir.resolve()
     filtered = []
     for f in files:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -201,6 +202,11 @@ def privacy_findings(report: dict[str, Any]) -> list[str]:
 
 
 def inspect_document(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    if not path.is_file():
+        raise IsADirectoryError(path)
+
     kind = detect_document_kind(path)
     if kind == "pdf":
         report = inspect_pdf(path)
@@ -252,7 +258,23 @@ def print_text(report: dict[str, Any]) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
-    report = inspect_document(args.document)
+    try:
+        report = inspect_document(args.document)
+    except FileNotFoundError:
+        print(f"Error: Document not found: {args.document}", file=sys.stderr)
+        return 2
+    except IsADirectoryError:
+        print(f"Error: Expected a document file, got a directory: {args.document}", file=sys.stderr)
+        return 2
+    except PermissionError:
+        print(f"Error: Permission denied while reading: {args.document}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    except (fitz.FileDataError, zipfile.BadZipFile, OSError) as exc:
+        print(f"Error: Could not inspect document: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
