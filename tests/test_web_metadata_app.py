@@ -6,9 +6,13 @@ from PIL import Image, PngImagePlugin
 from web_metadata_app import (
     WebAppConfig,
     analyze_cached_file,
+    build_parser,
     cache_paths,
     clear_cache,
     delete_cached_file,
+    display_url,
+    network_hint,
+    render_home,
     save_upload,
     sanitize_original_filename,
     sanitize_uploaded_file,
@@ -64,10 +68,27 @@ def test_clear_cache_removes_uploads_and_processed_files(tmp_path):
 
 
 def test_config_can_be_serialized_for_template(tmp_path):
-    config = WebAppConfig(cache_dir=tmp_path / "cache", host="127.0.0.1", port=8765)
+    config = WebAppConfig(cache_dir=tmp_path / "cache", host="0.0.0.0", port=8765)
 
     data = json.loads(config.to_json())
 
     assert data["cache_dir"] == str(tmp_path / "cache")
-    assert data["host"] == "127.0.0.1"
+    assert data["host"] == "0.0.0.0"
     assert data["port"] == 8765
+
+
+def test_default_web_host_is_lan_accessible():
+    args = build_parser().parse_args([])
+
+    assert args.host == "0.0.0.0"
+    assert display_url("0.0.0.0", 8000) == "http://127.0.0.1:8000"
+    assert "other computers" in network_hint("0.0.0.0", 8000).lower()
+
+
+def test_home_page_has_polished_layout_and_security_copy(tmp_path):
+    page = render_home(tmp_path / "cache").decode("utf-8")
+
+    assert "Document Metadata Workbench" in page
+    assert "hero" in page
+    assert "LAN-ready" in page
+    assert "Clear all cache" in page

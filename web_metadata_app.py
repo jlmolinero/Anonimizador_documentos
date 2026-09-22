@@ -34,7 +34,7 @@ class CachePaths:
 @dataclass(frozen=True)
 class WebAppConfig:
     cache_dir: Path = DEFAULT_CACHE_DIR
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8000
 
     def to_json(self) -> str:
@@ -135,6 +135,19 @@ def list_cached_files(cache_dir: Path) -> list[Path]:
     return sorted((p for p in paths.uploads.iterdir() if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+def display_url(host: str, port: int) -> str:
+    visible_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    return f"http://{visible_host}:{port}"
+
+
+def network_hint(host: str, port: int) -> str:
+    if host in {"0.0.0.0", "::"}:
+        return f"Listening on all interfaces. Other computers on your LAN can open http://<this-computer-ip>:{port}."
+    if host in {"127.0.0.1", "localhost"}:
+        return "Listening on localhost only. Use --host 0.0.0.0 to allow other computers on your LAN."
+    return f"Listening on {host}. Other computers that can reach that address can open http://{host}:{port}."
+
+
 def _html_page(title: str, body: str) -> bytes:
     return f"""<!doctype html>
 <html lang="en">
@@ -143,29 +156,41 @@ def _html_page(title: str, body: str) -> bytes:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title)}</title>
   <style>
-    body {{ font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 2rem; color: #17202a; }}
-    main {{ max-width: 980px; margin: auto; }}
-    .card {{ border: 1px solid #d7dde5; border-radius: 12px; padding: 1rem; margin: 1rem 0; background: #fbfcfe; }}
-    .actions {{ display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }}
+    :root {{ color-scheme: dark; --bg: #08111f; --panel: rgba(15, 23, 42, .86); --panel-2: rgba(30, 41, 59, .78); --text: #e5eefb; --muted: #9fb0c7; --line: rgba(148, 163, 184, .24); --accent: #2dd4bf; --accent-2: #38bdf8; --danger: #fb7185; }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; color: var(--text); background: radial-gradient(circle at top left, rgba(45,212,191,.22), transparent 34rem), radial-gradient(circle at top right, rgba(56,189,248,.18), transparent 32rem), var(--bg); min-height: 100vh; }}
+    main {{ max-width: 1120px; margin: auto; padding: 2.2rem; }}
+    .hero {{ border: 1px solid var(--line); border-radius: 28px; padding: 2rem; background: linear-gradient(135deg, rgba(15,23,42,.92), rgba(8,17,31,.76)); box-shadow: 0 24px 80px rgba(0,0,0,.36); }}
+    .hero h1 {{ font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.05em; line-height: .95; margin: .4rem 0 1rem; }}
+    .eyebrow {{ color: var(--accent); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: .8rem; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }}
+    .card {{ border: 1px solid var(--line); border-radius: 18px; padding: 1rem; margin: 1rem 0; background: var(--panel); box-shadow: 0 16px 48px rgba(0,0,0,.22); }}
+    .file-card {{ background: var(--panel-2); }}
+    .actions {{ display: flex; gap: .55rem; flex-wrap: wrap; margin-top: .85rem; align-items: center; }}
     button, input[type=file] {{ font: inherit; }}
-    button, .button {{ background: #0f766e; color: white; border: 0; padding: .55rem .8rem; border-radius: 8px; text-decoration: none; cursor: pointer; }}
-    button.danger {{ background: #b91c1c; }}
-    pre {{ overflow: auto; background: #111827; color: #e5e7eb; padding: 1rem; border-radius: 8px; }}
-    .muted {{ color: #667085; }}
-    .error {{ color: #b91c1c; font-weight: 600; }}
+    input[type=file] {{ width: 100%; border: 1px dashed rgba(45,212,191,.45); border-radius: 14px; padding: 1rem; background: rgba(15,23,42,.78); color: var(--muted); }}
+    button, .button {{ background: linear-gradient(135deg, #0f766e, #0891b2); color: white; border: 0; padding: .68rem .95rem; border-radius: 999px; text-decoration: none; cursor: pointer; font-weight: 700; box-shadow: 0 10px 24px rgba(8,145,178,.25); }}
+    button:hover, .button:hover {{ filter: brightness(1.08); transform: translateY(-1px); }}
+    button.danger {{ background: linear-gradient(135deg, #be123c, #ef4444); box-shadow: 0 10px 24px rgba(239,68,68,.22); }}
+    pre {{ overflow: auto; background: #020617; color: #dbeafe; padding: 1rem; border-radius: 14px; border: 1px solid var(--line); }}
+    .muted {{ color: var(--muted); }}
+    .error {{ color: #fecdd3; background: rgba(190,18,60,.22); border: 1px solid rgba(251,113,133,.42); padding: .8rem 1rem; border-radius: 14px; font-weight: 700; }}
+    .pill {{ display: inline-flex; gap: .35rem; align-items: center; padding: .35rem .62rem; border: 1px solid rgba(45,212,191,.35); border-radius: 999px; color: #bff7ef; background: rgba(45,212,191,.10); font-size: .84rem; font-weight: 700; }}
+    a {{ color: #7dd3fc; }}
+    h2 {{ margin-top: 1.7rem; }}
   </style>
 </head>
 <body><main>{body}</main></body>
 </html>""".encode("utf-8")
 
 
-def _render_home(cache_dir: Path, message: str = "") -> bytes:
+def render_home(cache_dir: Path, message: str = "") -> bytes:
     files = list_cached_files(cache_dir)
     rows = []
     for path in files:
         quoted = quote(path.name)
         rows.append(f"""
-        <div class="card">
+        <div class="card file-card">
           <strong>{html.escape(path.name)}</strong><br>
           <span class="muted">{path.stat().st_size} bytes</span>
           <div class="actions">
@@ -177,22 +202,41 @@ def _render_home(cache_dir: Path, message: str = "") -> bytes:
     listing = "".join(rows) or "<p class='muted'>No cached files.</p>"
     notice = f"<p class='error'>{html.escape(message)}</p>" if message else ""
     body = f"""
-    <h1>Document Metadata Inspector</h1>
-    <p>Upload a PDF, Office document or image to inspect metadata, optionally create a sanitized copy, and delete cached files when finished.</p>
+    <section class="hero">
+      <span class="eyebrow">LAN-ready · Local-first · Private cache</span>
+      <h1>Document Metadata Workbench</h1>
+      <p class="muted">Upload a PDF, Office document or image, inspect what metadata it exposes, create a sanitized copy when needed, then wipe the cache before you leave.</p>
+      <div class="actions">
+        <span class="pill">Metadata inspection</span>
+        <span class="pill">One-click sanitizing</span>
+        <span class="pill">Cache cleanup</span>
+      </div>
+    </section>
     {notice}
+    <div class="grid">
     <div class="card">
+      <h2>Upload</h2>
       <form method="post" action="/upload" enctype="multipart/form-data">
         <input type="file" name="document" required>
+        <div class="actions">
         <button type="submit">Upload and inspect</button>
+        </div>
       </form>
     </div>
-    <div class="actions">
+    <div class="card">
+      <h2>Cache controls</h2>
+      <p class="muted">Uploaded originals and generated sanitized files live only in the configured web cache directory.</p>
       <form method="post" action="/cache/clear"><button class="danger" type="submit">Clear all cache</button></form>
+    </div>
     </div>
     <h2>Cached files</h2>
     {listing}
     """
     return _html_page("Document Metadata Inspector", body)
+
+
+def _render_home(cache_dir: Path, message: str = "") -> bytes:
+    return render_home(cache_dir, message)
 
 
 def _render_file(cache_dir: Path, file_id: str, sanitized_report: dict | None = None, error: str = "") -> bytes:
@@ -353,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Start a local web UI to inspect and sanitize document metadata.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address; use 0.0.0.0 to allow LAN access")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="Directory used for uploaded and processed files")
     return parser
@@ -368,7 +412,8 @@ def main() -> int:
         cache_dir = config.cache_dir
 
     server = ThreadingHTTPServer((config.host, config.port), Handler)
-    print(f"Metadata web UI running at http://{config.host}:{config.port}")
+    print(f"Metadata web UI running at {display_url(config.host, config.port)}")
+    print(network_hint(config.host, config.port))
     print(f"Cache directory: {config.cache_dir.resolve()}")
     try:
         server.serve_forever()

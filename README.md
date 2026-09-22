@@ -168,10 +168,34 @@ Then open:
 http://127.0.0.1:8000
 ```
 
+By default the server binds to `0.0.0.0`, so other computers on the same LAN can open:
+
+```text
+http://<this-computer-ip>:8000
+```
+
 Options:
 
 ```bash
-python web_metadata_app.py --host 127.0.0.1 --port 8080 --cache-dir .web_cache
+python web_metadata_app.py --host 0.0.0.0 --port 8080 --cache-dir .web_cache
+```
+
+Run it in the background:
+
+```bash
+./scripts/start_web_background.sh
+```
+
+Environment overrides are supported:
+
+```bash
+PORT=8080 CACHE_DIR=.web_cache ./scripts/start_web_background.sh
+```
+
+Stop the background server:
+
+```bash
+./scripts/stop_web_background.sh
 ```
 
 The web UI stores uploaded and processed files under `.web_cache/` by default. Use the **Delete** button for an individual document or **Clear all cache** to remove all uploaded and generated files from the web cache. The cache directory is ignored by Git.
