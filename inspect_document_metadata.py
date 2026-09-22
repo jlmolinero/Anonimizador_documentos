@@ -39,6 +39,42 @@ SENSITIVE_KEYS = {
 }
 
 
+def detect_document_kind(path: Path) -> str | None:
+    """Detect supported document kind from extension, then file signature."""
+    suffix = path.suffix.lower()
+    if suffix in PDF_EXTS:
+        return "pdf"
+    if suffix in IMAGE_EXTS:
+        return "image"
+    if suffix in OFFICE_EXTS:
+        return "office"
+
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(16)
+    except OSError:
+        return None
+
+    if header.startswith(b"%PDF-"):
+        return "pdf"
+    if header.startswith(b"PK\x03\x04") and zipfile.is_zipfile(path):
+        try:
+            with zipfile.ZipFile(path) as zf:
+                names = set(zf.namelist())
+        except zipfile.BadZipFile:
+            return None
+        if "[Content_Types].xml" in names and any(
+            name.startswith(("word/", "xl/", "ppt/")) for name in names
+        ):
+            return "office"
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        return "image"
+    except Exception:
+        return None
+
+
 def _localname(tag: str) -> str:
     try:
         return etree.QName(tag).localname
@@ -165,15 +201,17 @@ def privacy_findings(report: dict[str, Any]) -> list[str]:
 
 
 def inspect_document(path: Path) -> dict[str, Any]:
-    suffix = path.suffix.lower()
-    if suffix in PDF_EXTS:
+    kind = detect_document_kind(path)
+    if kind == "pdf":
         report = inspect_pdf(path)
-    elif suffix in IMAGE_EXTS:
+    elif kind == "image":
         report = inspect_image(path)
-    elif suffix in OFFICE_EXTS:
+    elif kind == "office":
         report = inspect_office(path)
     else:
-        raise ValueError(f"Unsupported file type: {suffix}")
+        suffix = path.suffix.lower()
+        detail = suffix or "no extension and unknown file signature"
+        raise ValueError(f"Unsupported file type: {detail}")
     report["privacy_findings"] = privacy_findings(report)
     return report
 
