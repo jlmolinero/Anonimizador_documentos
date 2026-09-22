@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Anonimizador/sanitizador de documentos.
+Document anonymizer/sanitizer.
 
-Formatos:
+Formats:
   PDF
   DOCX / XLSX / PPTX
   DOCM / XLSM / PPTM (se eliminan macros por defecto)
   JPG / JPEG / PNG / TIFF / WEBP
 
-Dependencias:
+Dependencies:
   pip install pymupdf pillow lxml
 
-IMPORTANTE:
-- La sanitización estructural elimina metadatos y muchos contenidos ocultos.
-- La redacción automática de PII es heurística y puede tener falsos positivos/negativos.
-- Texto sensible dentro de imágenes requiere máscaras manuales (--masks) o revisión visual.
+IMPORTANT:
+- Structural sanitization removes metadata and many hidden contents.
+- Automatic PII redaction is heuristic and can have false positives or negatives.
+- Sensitive text inside images requires manual masks (--masks) or visual review.
 """
 
 from __future__ import annotations
@@ -82,15 +82,15 @@ class Redactor:
                 self.patterns.append((f"term:{term}", re.compile(re.escape(term), re.IGNORECASE)))
 
         if auto_pii:
-            # Deliberadamente conservador; no pretende sustituir una revisión humana.
+            # Deliberately conservative; it is not a replacement for human review.
             defs = {
                 "email": r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
                 "url": r"\bhttps?://[^\s<>\"]+",
                 "ipv4": r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b",
                 "iban": r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b",
                 "dni_nie_es": r"\b(?:\d{8}[A-HJ-NP-TV-Z]|[XYZ]\d{7}[A-HJ-NP-TV-Z])\b",
-                "ruta_usuario": r"(?:[A-Z]:\\Users\\[^\\\s]+|/Users/[^/\s]+|/home/[^/\s]+)",
-                "telefono": r"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)",
+                "user_path": r"(?:[A-Z]:\\Users\\[^\\\s]+|/Users/[^/\s]+|/home/[^/\s]+)",
+                "phone": r"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)",
             }
             for name, rx in defs.items():
                 self.patterns.append((name, re.compile(rx, re.IGNORECASE)))
@@ -146,7 +146,7 @@ def load_masks(path: Optional[Path]) -> dict[str, list[list[int]]]:
         return {}
     obj = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(obj, dict):
-        raise ValueError("El fichero de máscaras debe ser un objeto JSON.")
+        raise ValueError("The masks file must be a JSON object.")
     return obj
 
 
@@ -213,7 +213,7 @@ def remove_relationship_ids(parts: dict[str, bytes], source_part: str, rids: set
     changed = False
     for rel in list(root):
         if localname(rel.tag) == "Relationship" and rel.get("Id") in rids:
-            report.removed.append(f"Office relación interna eliminada: {source_part} -> {rel.get('Target','')}")
+            report.removed.append(f"Office internal relationship removed: {source_part} -> {rel.get('Target','')}")
             root.remove(rel)
             changed = True
     if changed:
@@ -252,7 +252,7 @@ def strip_relationships(parts: dict[str, bytes], removed: set[str], remove_exter
             remove = False
             if remove_external and mode.lower() == "external":
                 remove = True
-                report.removed.append(f"relación externa: {target}")
+                report.removed.append(f"external relationship: {target}")
             elif mode.lower() != "external":
                 resolved = resolve_rel_target(name, target)
                 if target_matches_removed(resolved, removed):
@@ -352,16 +352,16 @@ def accept_word_revisions(root, report: Report):
             report.removed.append(f"Word: {ln}")
         elif ln in {"del", "moveFrom"}:
             parent.remove(elem)
-            report.removed.append(f"Word: revisión eliminada ({ln})")
+            report.removed.append(f"Word: revision removed ({ln})")
         elif ln in {"ins", "moveTo"}:
             idx = parent.index(elem)
             for child in list(elem):
                 parent.insert(idx, child)
                 idx += 1
             parent.remove(elem)
-            report.removed.append(f"Word: revisión aceptada ({ln})")
+            report.removed.append(f"Word: revision accepted ({ln})")
 
-    # Elimina atributos de autor/revisión y rsid.
+    # Remove author/revision attributes and rsid values.
     for elem in root.iter():
         for attr in list(elem.attrib):
             ln = localname(attr)
@@ -412,11 +412,11 @@ def remove_hidden_ppt_slides(parts: dict[str, bytes], removed: set[str], report:
             removed.add(sr)
         sld_id.getparent().remove(sld_id)
         rels.remove(rel)
-        # También elimina referencias del mismo rId en shows personalizados.
+        # Also remove references to the same rId in custom shows.
         for e in list(pres.xpath(f".//*[@r:id='{rid}']", namespaces=NS)):
             if e.getparent() is not None:
                 e.getparent().remove(e)
-        report.removed.append(f"PowerPoint: diapositiva oculta eliminada ({target})")
+        report.removed.append(f"PowerPoint: hidden slide removed ({target})")
         changed = True
     if changed:
         parts[pres_name] = xml_bytes(pres)
@@ -445,7 +445,7 @@ def remove_hidden_ppt_shapes(root, part_name: str, parts: dict[str, bytes], repo
                 except Exception:
                     pass
         parent.remove(obj)
-        report.removed.append(f"PowerPoint: objeto oculto eliminado en {part_name}")
+        report.removed.append(f"PowerPoint: hidden object removed in {part_name}")
     remove_relationship_ids(parts, part_name, rids, report)
 
 
@@ -467,7 +467,7 @@ def remove_hidden_word_runs(root, part_name: str, parts: dict[str, bytes], repor
         parent = run.getparent()
         if parent is not None:
             parent.remove(run)
-            report.removed.append(f"Word: run oculto eliminado en {part_name}")
+            report.removed.append(f"Word: hidden run removed in {part_name}")
     remove_relationship_ids(parts, part_name, rids, report)
 
 
@@ -483,11 +483,11 @@ def strip_word_field_codes(root, report: Report):
                     del elem.attrib[attr]
                     n += 1
     if n:
-        report.removed.append(f"Word: {n} código(s) de campo oculto(s) eliminados")
+        report.removed.append(f"Word: {n} hidden field code(s) removed")
 
 
 def prune_orphan_parts(parts: dict[str, bytes], report: Report) -> set[str]:
-    """Elimina partes OOXML que ya no son alcanzables desde las relaciones raíz."""
+    """Remove OOXML parts that are no longer reachable from root relationships."""
     reachable: set[str] = set()
     keep_rels: set[str] = {"_rels/.rels"}
     queue = [""]
@@ -517,7 +517,7 @@ def prune_orphan_parts(parts: dict[str, bytes], report: Report) -> set[str]:
     for n in orphan:
         parts.pop(n, None)
     if orphan:
-        report.removed.append(f"Office: {len(orphan)} parte(s) huérfana(s) eliminada(s)")
+        report.removed.append(f"Office: {len(orphan)} orphan part(s) removed")
     return orphan
 
 def remove_hidden_excel_sheets(parts: dict[str, bytes], removed: set[str], report: Report):
@@ -551,7 +551,7 @@ def remove_hidden_excel_sheets(parts: dict[str, bytes], removed: set[str], repor
         parent = sheet.getparent()
         parent.remove(sheet)
         rels.remove(rel)
-        report.removed.append(f"Excel: hoja oculta eliminada ({sheet.get('name', '')})")
+        report.removed.append(f"Excel: hidden sheet removed ({sheet.get('name', '')})")
         changed = True
 
     if changed:
@@ -561,14 +561,14 @@ def remove_hidden_excel_sheets(parts: dict[str, bytes], removed: set[str], repor
 
 def scrub_hidden_excel_rows_cols(root, report: Report):
     removed_cells = 0
-    # Filas ocultas: elimina celdas pero deja estructura mínima.
+    # Hidden rows: remove cells but keep a minimal structure.
     for row in root.xpath(".//s:sheetData/s:row[@hidden='1' or @hidden='true']", namespaces=NS):
         for c in list(row):
             row.remove(c)
             removed_cells += 1
         row.attrib.pop("hidden", None)
 
-    # Columnas ocultas: elimina contenido de celdas cuyo índice cae en esos rangos.
+    # Hidden columns: remove cell contents whose column index falls in those ranges.
     hidden_ranges = []
     for col in root.xpath(".//s:cols/s:col[@hidden='1' or @hidden='true']", namespaces=NS):
         try:
@@ -595,12 +595,12 @@ def scrub_hidden_excel_rows_cols(root, report: Report):
                 removed_cells += 1
 
     if removed_cells:
-        report.removed.append(f"Excel: {removed_cells} celdas ocultas vaciadas")
+        report.removed.append(f"Excel: {removed_cells} hidden cells emptied")
 
 
 def redact_container_text(root, container_names: set[str], text_names: set[str], redactor: Redactor, report: Report):
-    # Permite detectar términos cortados entre varios runs, a costa de colapsar el formato
-    # sólo cuando hay una redacción dentro de ese contenedor.
+    # Detect terms split across several runs; formatting is collapsed
+    # only when redaction occurs inside that container.
     for container in root.iter():
         if localname(container.tag) not in container_names:
             continue
@@ -641,20 +641,20 @@ def redact_xml(root, redactor: Redactor, report: Report, family: str):
 
 def strip_excel_formulas_and_names(root, part_name: str, report: Report):
     n = 0
-    # Fórmulas de celdas: se conserva el valor cacheado <v>, si existe.
+    # Cell formulas: keep the cached <v> value when present.
     if part_name.startswith("xl/worksheets/"):
         for f in list(root.iter()):
             if localname(f.tag) == "f" and f.getparent() is not None:
                 f.getparent().remove(f)
                 n += 1
-    # Nombres definidos pueden contener rutas, nombres de hojas o expresiones ocultas.
+    # Defined names may contain paths, sheet names, or hidden expressions.
     if part_name == "xl/workbook.xml":
         for d in list(root.iter()):
             if localname(d.tag) == "definedNames" and d.getparent() is not None:
                 d.getparent().remove(d)
                 n += 1
     if n:
-        report.removed.append(f"Excel: {n} fórmula(s)/nombre(s) definido(s) eliminado(s) en {part_name}")
+        report.removed.append(f"Excel: {n} formula(s)/defined name(s) removed in {part_name}")
 
 
 def compact_excel_shared_strings(parts: dict[str, bytes], report: Report):
@@ -721,7 +721,7 @@ def compact_excel_shared_strings(parts: dict[str, bytes], report: Report):
     parts[sst_name] = xml_bytes(sst)
     removed_count = len(items) - len(order)
     if removed_count:
-        report.removed.append(f"Excel: {removed_count} cadena(s) compartida(s) no usada(s) eliminada(s)")
+        report.removed.append(f"Excel: {removed_count} unused shared string(s) removed")
 
 
 def scrub_chart_caches(parts: dict[str, bytes], report: Report):
@@ -742,10 +742,10 @@ def scrub_chart_caches(parts: dict[str, bytes], report: Report):
         if changed:
             parts[name] = xml_bytes(root)
     if removed:
-        report.removed.append(f"Office: {removed} caché(s) de gráficos eliminada(s)")
+        report.removed.append(f"Office: {removed} chart cache(s) removed")
 
 def anonymize_excel_sheet_names(parts: dict[str, bytes], report: Report):
-    """Renombra hojas visibles para que el nombre de pestaña no filtre identidad."""
+    """Rename visible sheets so tab names do not leak identity."""
     wb_name = "xl/workbook.xml"
     if wb_name not in parts:
         return
@@ -762,7 +762,7 @@ def anonymize_excel_sheet_names(parts: dict[str, bytes], report: Report):
         if old and old != new:
             mapping[old] = new
             sheet.set("name", new)
-            report.removed.append(f"Excel: nombre de hoja anonimizado ({old!r} -> {new})")
+            report.removed.append(f"Excel: sheet name anonymized ({old!r} -> {new})")
     parts[wb_name] = xml_bytes(wb)
     if not mapping:
         return
@@ -772,7 +772,7 @@ def anonymize_excel_sheet_names(parts: dict[str, bytes], report: Report):
         for old, new in mapping.items():
             qold = old.replace("'", "''")
             out = out.replace(f"'{qold}'!", f"'{new}'!")
-            # Nombres simples pueden aparecer sin comillas en fórmulas.
+            # Simple names may appear unquoted in formulas.
             if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", old):
                 out = re.sub(rf"(?<![A-Za-z0-9_.]){re.escape(old)}!", new + "!", out)
         return out
@@ -800,7 +800,7 @@ def anonymize_excel_sheet_names(parts: dict[str, bytes], report: Report):
             parts[name] = xml_bytes(root)
 
 def sanitize_embedded_media(parts: dict[str, bytes], redactor: Redactor, report: Report):
-    """Elimina metadatos de imágenes incrustadas en Office y limpia SVG básicos."""
+    """Remove metadata from Office embedded images and clean basic SVG files."""
     unsupported = set()
     for name in list(parts):
         low = name.lower()
@@ -833,9 +833,9 @@ def sanitize_embedded_media(parts: dict[str, bytes], redactor: Redactor, report:
                             kw.update(save_all=True, append_images=frames[1:], duration=durations)
                         frames[0].save(out, **kw)
                 parts[name] = out.getvalue()
-                report.removed.append(f"Office media: metadatos eliminados de {name}")
+                report.removed.append(f"Office media: metadata removed from {name}")
             except Exception as exc:
-                report.warnings.append(f"No se pudo reescribir imagen incrustada {name}: {exc}")
+                report.warnings.append(f"Could not rewrite embedded image {name}: {exc}")
         elif ext == ".svg":
             try:
                 root = xml_parse(parts[name])
@@ -856,13 +856,13 @@ def sanitize_embedded_media(parts: dict[str, bytes], redactor: Redactor, report:
                             else:
                                 elem.attrib[attr] = redactor.redact_text(value, report)
                 parts[name] = xml_bytes(root)
-                report.removed.append(f"Office media: SVG saneado {name}")
+                report.removed.append(f"Office media: SVG sanitized {name}")
             except Exception as exc:
-                report.warnings.append(f"No se pudo sanear SVG incrustado {name}: {exc}")
+                report.warnings.append(f"Could not sanitize embedded SVG {name}: {exc}")
         elif ext in {".emf", ".wmf"}:
             unsupported.add(ext)
     if unsupported:
-        report.warnings.append("Office contiene gráficos EMF/WMF; se conservan porque Pillow no puede reescribirlos de forma segura.")
+        report.warnings.append("Office contains EMF/WMF graphics; they are kept because Pillow cannot safely rewrite them.")
 
 def clean_office(src: Path, dst: Path, redactor: Redactor, remove_external: bool, remove_hidden_excel: bool, anonymize_sheet_names: bool, strip_formulas: bool, report: Report):
     ext = src.suffix.lower()
@@ -873,7 +873,7 @@ def clean_office(src: Path, dst: Path, redactor: Redactor, remove_external: bool
     if strip_formulas and ext in {".xlsx", ".xlsm"} and "xl/calcChain.xml" in parts:
         removed.add("xl/calcChain.xml")
     if removed:
-        report.removed.append(f"Office: {len(removed)} partes internas eliminadas")
+        report.removed.append(f"Office: {len(removed)} internal parts removed")
 
     if remove_hidden_excel and ext in {".xlsx", ".xlsm"}:
         remove_hidden_excel_sheets(parts, removed, report)
@@ -889,7 +889,7 @@ def clean_office(src: Path, dst: Path, redactor: Redactor, remove_external: bool
     strip_relationships(parts, removed, remove_external, report)
     strip_content_types(parts, removed)
 
-    # Limpieza XML específica + redacción textual.
+    # Format-specific XML cleanup plus text redaction.
     for name in list(parts):
         if not name.lower().endswith((".xml", ".rels")):
             continue
@@ -926,7 +926,7 @@ def clean_office(src: Path, dst: Path, redactor: Redactor, remove_external: bool
         compact_excel_shared_strings(parts, report)
     scrub_chart_caches(parts, report)
 
-    # Segunda pasada: relaciones que hayan quedado apuntando a partes eliminadas dinámicamente.
+    # Second pass: relationships that still point to dynamically removed parts.
     strip_relationships(parts, removed, remove_external, report)
     removed |= prune_orphan_parts(parts, report)
     strip_content_types(parts, removed)
@@ -957,7 +957,7 @@ def redact_pdf_visible(src: Path, tmp_out: Path, redactor: Redactor, report: Rep
             except Exception:
                 pass
 
-        # Máscaras PDF manuales: [pagina, x1, y1, x2, y2], página 1-based.
+        # Manual PDF masks: [page, x1, y1, x2, y2], 1-based page.
         for item in masks:
             if len(item) == 5 and int(item[0]) == page_no:
                 rectangles.append(fitz.Rect(*map(float, item[1:])))
@@ -1005,8 +1005,8 @@ def rasterize_pdf(src: Path, dst: Path, dpi: int, report: Report):
 
 def scrub_pdf_vector(src: Path, dst: Path, report: Report):
     doc = fitz.open(src)
-    # El scrubber de PyMuPDF elimina metadatos, XML, JavaScript, adjuntos,
-    # texto invisible, enlaces, miniaturas y otros elementos sensibles.
+    # PyMuPDF scrubber removes metadata, XML, JavaScript, attachments,
+    # hidden text, links, thumbnails, and other sensitive elements.
     doc.scrub(
         attached_files=True,
         clean_pages=True,
@@ -1022,7 +1022,7 @@ def scrub_pdf_vector(src: Path, dst: Path, report: Report):
         thumbnails=True,
         xml_metadata=True,
     )
-    # Para anonimización fuerte, eliminamos además anotaciones y widgets/formularios.
+    # For strong anonymization, also remove annotations and widgets/forms.
     for page in doc:
         annots = list(page.annots() or [])
         for annot in annots:
@@ -1047,7 +1047,7 @@ def scrub_pdf_vector(src: Path, dst: Path, report: Report):
         pass
     doc.save(dst, garbage=4, clean=True, deflate=True)
     doc.close()
-    report.removed.append("PDF: metadatos, XML, adjuntos, JavaScript, enlaces, anotaciones, formularios y texto invisible limpiados")
+    report.removed.append("PDF: metadata, XML, attachments, JavaScript, links, annotations, forms, and hidden text cleaned")
 
 
 def clean_pdf(src: Path, dst: Path, redactor: Redactor, pdf_mode: str, dpi: int, report: Report, masks: list[list[int]]):
@@ -1065,7 +1065,7 @@ def clean_pdf(src: Path, dst: Path, redactor: Redactor, pdf_mode: str, dpi: int,
             rasterize_pdf(base, dst, dpi, report)
         else:
             scrub_pdf_vector(base, dst, report)
-            report.warnings.append("PDF vectorial: es menos fuerte que rasterizar. Para máxima privacidad usa --pdf-mode raster.")
+            report.warnings.append("Vector PDF mode is weaker than rasterization. For maximum privacy use --pdf-mode raster.")
 
 def clean_image(src: Path, dst: Path, masks: list[list[int]], report: Report):
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -1074,7 +1074,7 @@ def clean_image(src: Path, dst: Path, masks: list[list[int]], report: Report):
         durations = []
         for frame in ImageSequence.Iterator(im):
             frame.load()
-            # Recrear desde píxeles elimina EXIF/XMP/ICC/comentarios/text chunks.
+            # Recreate from pixels to remove EXIF/XMP/ICC/comments/text chunks.
             visual = ImageOps.exif_transpose(frame.copy())
             raw = Image.frombytes(visual.mode, visual.size, visual.tobytes())
             if masks:
@@ -1083,7 +1083,7 @@ def clean_image(src: Path, dst: Path, masks: list[list[int]], report: Report):
                     if len(box) != 4:
                         continue
                     draw.rectangle(tuple(map(int, box)), fill=0 if raw.mode in {"1", "L", "I", "F"} else "black")
-                report.removed.append(f"Imagen: {len(masks)} máscara(s) aplicada(s)")
+                report.removed.append(f"Image: {len(masks)} mask(s) applied")
             frames.append(raw)
             durations.append(frame.info.get("duration", im.info.get("duration", 0)))
 
@@ -1104,22 +1104,22 @@ def clean_image(src: Path, dst: Path, masks: list[list[int]], report: Report):
                 kw.update(save_all=True, append_images=frames[1:], duration=durations)
             frames[0].save(dst, **kw)
         else:
-            raise ValueError(f"Formato de imagen no soportado: {ext}")
+            raise ValueError(f"Unsupported image format: {ext}")
 
-    report.removed.append("Imagen: metadatos EXIF/XMP/ICC/texto auxiliar eliminados")
+    report.removed.append("Image: EXIF/XMP/ICC/auxiliary text metadata removed")
     if not masks:
-        report.warnings.append("La imagen puede contener PII visible en sus píxeles. Añade máscaras manuales con --masks y revisa visualmente el resultado.")
+        report.warnings.append("The image may contain visible PII in its pixels. Add manual masks with --masks and visually review the result.")
 
 
 def process_one(src: Path, out_dir: Path, args, redactor: Redactor, masks: dict[str, list[list[int]]]) -> Report:
     ext = src.suffix.lower()
     if ext not in SUPPORTED_EXTS:
-        raise ValueError(f"Formato no soportado: {ext}")
+        raise ValueError(f"Unsupported format: {ext}")
 
     out_name = safe_output_name(src, args.randomize_names)
     dst = out_dir / out_name
     if dst.exists() and not args.overwrite:
-        raise FileExistsError(f"Ya existe: {dst}. Usa --overwrite si quieres reemplazarlo.")
+        raise FileExistsError(f"Already exists: {dst}. Use --overwrite to replace it.")
 
     kind = "pdf" if ext == ".pdf" else "office" if ext in OFFICE_EXTS else "image"
     report = Report(source=str(src), output=str(dst), kind=kind)
@@ -1128,14 +1128,14 @@ def process_one(src: Path, out_dir: Path, args, redactor: Redactor, masks: dict[
         clean_pdf(src, dst, redactor, args.pdf_mode, args.pdf_dpi, report, masks.get(src.name, masks.get(str(src), [])))
     elif ext in OFFICE_EXTS:
         clean_office(src, dst, redactor, not args.keep_external_links, not args.keep_hidden_excel, not args.keep_sheet_names, not args.keep_formulas, report)
-        report.warnings.append("Office: revisa visualmente nombres, direcciones u otros datos sensibles que puedan estar dentro de imágenes/SmartArt/diagramas.")
+        report.warnings.append("Office: visually review names, addresses, or other sensitive data that may be inside images/SmartArt/diagrams.")
         if ext in {".xlsx", ".xlsm"} and not args.keep_formulas:
-            report.warnings.append("Excel: las fórmulas se eliminan por privacidad; si una celda no tenía valor cacheado puede quedar vacía. Usa --keep-formulas si necesitas conservarlas.")
+            report.warnings.append("Excel: formulas are removed for privacy; if a cell had no cached value it may become empty. Use --keep-formulas if you need to keep them.")
     else:
         file_masks = masks.get(src.name, masks.get(str(src), []))
         clean_image(src, dst, file_masks, report)
 
-    # Permisos mínimos y fecha de sistema normalizada (best effort).
+    # Minimal permissions and normalized filesystem timestamp (best effort).
     try:
         os.chmod(dst, 0o600)
         os.utime(dst, (315532800, 315532800))  # 1980-01-01 UTC aprox.
@@ -1157,24 +1157,24 @@ def iter_inputs(path: Path, recursive: bool) -> list[Path]:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Anonimiza/sanitiza PDF, Office e imágenes creando copias nuevas.",
+        description="Anonymize/sanitize PDF, Office, and image files by creating new copies.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("input", type=Path, help="Archivo o directorio de entrada")
-    p.add_argument("output_dir", type=Path, help="Directorio de salida")
-    p.add_argument("--recursive", action="store_true", help="Recorrer subdirectorios")
-    p.add_argument("--terms", type=Path, help="TXT con un término sensible por línea")
-    p.add_argument("--auto-pii", action="store_true", help="Redactar patrones comunes: email, URL, IP, IBAN, DNI/NIE, rutas y teléfonos")
-    p.add_argument("--pdf-mode", choices=["raster", "scrub"], default="raster", help="raster = máxima limpieza estructural; scrub = conserva vectores/texto")
-    p.add_argument("--pdf-dpi", type=int, default=180, help="Resolución al rasterizar PDFs")
-    p.add_argument("--masks", type=Path, help="JSON: imágenes [x1,y1,x2,y2]; PDF [pagina,x1,y1,x2,y2]")
-    p.add_argument("--randomize-names", action="store_true", help="No conservar el nombre original en el fichero de salida")
-    p.add_argument("--keep-external-links", action="store_true", help="Conservar relaciones/links externos de Office")
-    p.add_argument("--keep-hidden-excel", action="store_true", help="Conservar hojas, filas y columnas ocultas de Excel")
-    p.add_argument("--keep-sheet-names", action="store_true", help="Conservar nombres originales de pestañas de Excel")
-    p.add_argument("--keep-formulas", action="store_true", help="Conservar fórmulas y nombres definidos de Excel")
-    p.add_argument("--overwrite", action="store_true", help="Sobrescribir salidas existentes")
-    p.add_argument("--report", type=Path, help="Ruta del informe JSON; por defecto output_dir/_LOCAL_ONLY_anonymization_report.json")
+    p.add_argument("input", type=Path, help="Input file or directory")
+    p.add_argument("output_dir", type=Path, help="Output directory")
+    p.add_argument("--recursive", action="store_true", help="Scan subdirectories")
+    p.add_argument("--terms", type=Path, help="TXT file with one sensitive term per line")
+    p.add_argument("--auto-pii", action="store_true", help="Redact common patterns: email, URL, IP, IBAN, Spanish DNI/NIE, paths, and phone numbers")
+    p.add_argument("--pdf-mode", choices=["raster", "scrub"], default="raster", help="raster = strongest structural cleanup; scrub = keep vectors/text")
+    p.add_argument("--pdf-dpi", type=int, default=180, help="Resolution used when rasterizing PDFs")
+    p.add_argument("--masks", type=Path, help="JSON: images [x1,y1,x2,y2]; PDF [page,x1,y1,x2,y2]")
+    p.add_argument("--randomize-names", action="store_true", help="Do not keep the original name in the output file")
+    p.add_argument("--keep-external-links", action="store_true", help="Keep Office external links/relationships")
+    p.add_argument("--keep-hidden-excel", action="store_true", help="Keep hidden Excel sheets, rows, and columns")
+    p.add_argument("--keep-sheet-names", action="store_true", help="Keep original Excel sheet names")
+    p.add_argument("--keep-formulas", action="store_true", help="Keep Excel formulas and defined names")
+    p.add_argument("--overwrite", action="store_true", help="Overwrite existing outputs")
+    p.add_argument("--report", type=Path, help="JSON report path; defaults to output_dir/_LOCAL_ONLY_anonymization_report.json")
     return p
 
 
@@ -1202,7 +1202,7 @@ def main() -> int:
         filtered.append(f)
     files = filtered
     if not files:
-        print("No se encontraron archivos compatibles.", file=sys.stderr)
+        print("No supported files were found.", file=sys.stderr)
         return 2
 
     reports = []
@@ -1221,15 +1221,15 @@ def main() -> int:
         "files": reports,
         "failures": failures,
         "notes": [
-            "Ningún proceso automático garantiza anonimato absoluto.",
-            "Revisa visualmente el resultado antes de publicarlo o enviarlo.",
-            "Las imágenes requieren máscaras manuales para PII visible en píxeles.",
-            "La redacción automática de PII puede producir falsos positivos o negativos.",
-            "NO COMPARTAS este informe: contiene rutas/nombres de los archivos originales.",
+            "No automated process guarantees absolute anonymity.",
+            "Visually review the result before publishing or sending it.",
+            "Images require manual masks for PII visible in pixels.",
+            "Automatic PII redaction may produce false positives or negatives.",
+            "DO NOT SHARE this report: it contains original file paths/names.",
         ],
     }
     report_path.write_text(json.dumps(report_obj, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nInforme: {report_path}")
+    print(f"\nReport: {report_path}")
     return 1 if failures else 0
 
 

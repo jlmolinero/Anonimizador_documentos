@@ -1,0 +1,2 @@
+-r requirements_anonimizador.txt
+pytest>=9.0.0,<10
