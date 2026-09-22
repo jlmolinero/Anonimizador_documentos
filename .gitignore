@@ -1,11 +1,19 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
 .venv/
 venv/
+.env
+.env.*
 
 # Local input/output data
 input/
@@ -13,8 +21,17 @@ inputs/
 output/
 outputs/
 examples/private/
+samples/private/
 *_anon.*
 _LOCAL_ONLY_*.json
+*_metadata.json
+metadata_report*.json
+anonymization_report*.json
+
+# Temporary files and logs
+tmp/
+temp/
+*.log
 
 # OS/editor
 .DS_Store
@@ -23,3 +40,4 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*~
