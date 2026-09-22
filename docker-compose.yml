@@ -1,0 +1,12 @@
+services:
+  metadata-web:
+    build: .
+    image: document-metadata-anonymizer:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - metadata-cache:/data
+    restart: unless-stopped
+
+volumes:
+  metadata-cache:

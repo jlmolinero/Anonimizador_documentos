@@ -200,6 +200,43 @@ Stop the background server:
 
 The web UI stores uploaded and processed files under `.web_cache/` by default. Use the **Delete** button for an individual document or **Clear all cache** to remove all uploaded and generated files from the web cache. The cache directory is ignored by Git.
 
+## Container usage
+
+Build the container image locally:
+
+```bash
+docker build -t document-metadata-anonymizer:latest .
+```
+
+Run the web UI with a persistent cache volume:
+
+```bash
+docker run --rm \
+  -p 8000:8000 \
+  -v document-metadata-cache:/data \
+  document-metadata-anonymizer:latest
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+From another computer on the same LAN, use:
+
+```text
+http://<docker-host-ip>:8000
+```
+
+With Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The image runs as a non-root user, exposes port `8000`, stores uploads and processed files in `/data`, and includes a healthcheck for the web UI.
+
 ## Recommended verification workflow
 
 1. Inspect the original document:
