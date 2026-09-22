@@ -154,6 +154,28 @@ python inspect_document_metadata.py sanitized/original_anon.pdf --json
 
 The inspector supports PDF, Office Open XML and image files. It reports direct metadata, embedded PDF files, XML metadata streams and notable Office parts such as comments, custom XML, external links, embedded objects, signatures and macro payloads.
 
+## Local web UI
+
+You can also start a local web interface to upload documents, inspect metadata, create sanitized copies and clear the web cache when you are done:
+
+```bash
+python web_metadata_app.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Options:
+
+```bash
+python web_metadata_app.py --host 127.0.0.1 --port 8080 --cache-dir .web_cache
+```
+
+The web UI stores uploaded and processed files under `.web_cache/` by default. Use the **Delete** button for an individual document or **Clear all cache** to remove all uploaded and generated files from the web cache. The cache directory is ignored by Git.
+
 ## Recommended verification workflow
 
 1. Inspect the original document:
